@@ -29,7 +29,7 @@ class Service:
     Attributes:
         user_agent (str): User agent string.
         __token (str):    Token for VK API.
-        logger (logging.Logger): The logger for class.
+        __logger (logging.Logger): The logger for class.
 
     Example usage:
     ```
@@ -44,54 +44,67 @@ class Service:
     ```
     """
 
-    logger: logging.Logger = create_logger(__name__)
-
     #############
     # CONSTRUCTOR
-    def __init__(self, user_agent: str, token: str) -> None:
+    def __init__(self, user_agent: str, token: str, default_logging: bool = True) -> None:
         """
         Initializes a Service object.
 
         Args:
             user_agent (str): User agent string.
-            token (str):      Token for VK API.
+            token (str): Token for VK API.
+            default_logging (bool): Using or not the base logger.
         """
         self.user_agent = user_agent
         self.__token = token
+        self.__logger = None
+        if default_logging:
+            self.set_logger()
 
-    @classmethod
-    def set_logger(cls, logger: logging.Logger) -> None:
+    def set_logger(self, logger: logging.Logger = None) -> None:
         """
-        Set logger for class.
+        Set logger for object.
 
         Args:
             logger (logging.Logger): Logger.
         """
-        cls.logger = logger
+        if logger is False:
+            self.__logger = None
+        elif logger is not None:
+            self.__logger = logger
+        elif self.__logger is None:
+            self.__logger = create_logger(self.__class__.__name__)
+
+    def _log(self, msg: str, level: str = "info"):
+        if self.__logger \
+           and hasattr(self.__logger, level) \
+           and callable(getattr(self.__logger, level)):
+            getattr(self.__logger, level)(msg)
 
     ##################################
     # METHODS WITH WORKING WITH CONFIG
     @classmethod
-    def parse_config(cls, filename: str = "config_vk.ini"):
+    def parse_config(cls, filename: str = "config_vk.ini", default_logging: bool = True):
         """
         Create an instance of Service from config created by 'TokenReceiver'.
 
         Args:
             filename (str): Filename of config (default = "config_vk.ini").
+            default_logging (bool): Using or not the base logger.
         """
+        self = cls("", "", default_logging)
         dirname = os.path.dirname(__file__)
         configfile_path = os.path.join(dirname, filename)
         try:
             config = configparser.ConfigParser()
             config.read(configfile_path, encoding="utf-8")
-            user_agent = config["VK"]["user_agent"]
-            token = config["VK"]["token_for_audio"]
-            return cls(user_agent, token)
+            self.user_agent = config["VK"]["user_agent"]
+            self.__token = config["VK"]["token_for_audio"]
+            return self
         except Exception as e:
-            cls.logger.error("Config not found or invalid: " + str(e))
+            self._log(level="error", msg="Config not found or invalid: " + str(e))
 
-    @classmethod
-    def del_config(cls, filename: str = "config_vk.ini"):
+    def del_config(self, filename: str = "config_vk.ini"):
         """
         Delete config created by 'TokenReceiver'.
 
@@ -101,9 +114,9 @@ class Service:
         configfile_path = os.path.join(os.path.dirname(__file__), filename)
         try:
             os.remove(configfile_path)
-            cls.logger.info("Config successful deleted!")
+            self._log("Config successful deleted!")
         except Exception as e:
-            cls.logger.warning(e)
+            self._log(level="warning", msg=e)
 
     ####################################
     # METHODS FOR REQUESTS WITH HANDLERS
@@ -129,12 +142,12 @@ class Service:
         Raises:
             VkApiException: If the response contains an error.
         """
-        self.logger.info("Getting user info...")
+        self._log("Getting user info...")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get_profile_info()
         request.fill_token(self.__token)
         response: VkApiResponse = make_request(request)
         user_info: UserInfo = Converter.response_to_userinfo(response)
-        self.logger.info(f"User info: {user_info}")
+        self._log(f"User info: {user_info}")
         return user_info
 
     async def get_user_info_async(self) -> UserInfo:
@@ -147,16 +160,15 @@ class Service:
         Raises:
             VkApiException: If the response contains an error.
         """
-        self.logger.info("Getting user info...")
+        self._log("Getting user info...")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get_profile_info()
         request.fill_token(self.__token)
         response: VkApiResponse = await make_request_async(request)
         user_info: UserInfo = Converter.response_to_userinfo(response)
-        self.logger.info(f"User info: {user_info}")
+        self._log(f"User info: {user_info}")
         return user_info
 
-    @classmethod
-    def check_token(cls, token: str) -> bool:
+    def check_token(self, token: str) -> bool:
         """
         Check token for VK API (sync).
 
@@ -166,19 +178,18 @@ class Service:
         Returns:
             bool: True if token is valid, False otherwise.
         """
-        cls.logger.info("Checking token...")
+        self._log("Checking token...")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get_profile_info()
         request.fill_token(token)
         try:
             make_request(request)
-            cls.logger.info("Token is valid!")
+            self._log("Token is valid!")
             return True
         except VkApiException:
-            cls.logger.info("Token is invalid!")
+            self._log("Token is invalid!")
             return False
 
-    @classmethod
-    async def check_token_async(cls, token: str) -> bool:
+    async def check_token_async(self, token: str) -> bool:
         """
         Check token for VK API (async).
 
@@ -188,15 +199,15 @@ class Service:
         Returns:
             bool: True if token is valid, False otherwise.
         """
-        cls.logger.info("Checking token...")
+        self._log("Checking token...")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get_profile_info()
         request.fill_token(token)
         try:
             await make_request_async(request)
-            cls.logger.info("Token is valid!")
+            self._log("Token is valid!")
             return True
         except VkApiException:
-            cls.logger.info("Token is invalid!")
+            self._log("Token is invalid!")
             return False
 
     def is_token_valid(self) -> bool:
@@ -235,26 +246,26 @@ class Service:
             VkApiException: If the response contains an error.
         """
         user_id = int(user_id)
-        self.logger.info(f"Request by user: {user_id}")
+        self._log(f"Request by user: {user_id}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get_count(user_id)
         self.fill_user_agent_and_token(request)
         response: VkApiResponse = make_request(request)
         songs_count: int = response.data
-        self.logger.info(f"Count of user's songs: {songs_count}")
+        self._log(f"Count of user's songs: {songs_count}")
 
         if songs_count != 0:
             return songs_count
 
         # If count of songs is 0, it can be due to access
         # denied to user's songs. So check this case.
-        self.logger.info(f"Trying to get songs by user id: {user_id}")
+        self._log(f"Trying to get songs by user id: {user_id}")
         try:
             self.get_songs_by_userid(user_id, 1)
             return songs_count
         except VkApiException as e:
             # If error code is 201, it means access denied to user's songs.
             if e.error_code == 201:
-                self.logger.warning(f"Access denied to user's songs.")
+                self._log(level="warning", msg="Access denied to user's songs.")
                 return -1
             raise
 
@@ -272,26 +283,26 @@ class Service:
             VkApiException: If the response contains an error.
         """
         user_id = int(user_id)
-        self.logger.info(f"Request by user: {user_id}")
+        self._log(f"Request by user: {user_id}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get_count(user_id)
         self.fill_user_agent_and_token(request)
         response: VkApiResponse = await make_request_async(request)
         songs_count: int = response.data
-        self.logger.info(f"Count of user's songs: {songs_count}")
+        self._log(f"Count of user's songs: {songs_count}")
 
         if songs_count != 0:
             return songs_count
 
         # If count of songs is 0, it can be due to access
         # denied to user's songs. So check this case.
-        self.logger.info(f"Trying to get songs by user id: {user_id}")
+        self._log(f"Trying to get songs by user id: {user_id}")
         try:
             await self.get_songs_by_userid_async(user_id, 1)
             return songs_count
         except VkApiException as e:
             # If error code is 201, it means access denied to user's songs.
             if e.error_code == 201:
-                self.logger.warning(f"Access denied to user's songs.")
+                self._log(level="warning", msg="Access denied to user's songs.")
                 return -1
             raise
 
@@ -299,7 +310,7 @@ class Service:
     def get_songs_by_id(self, audios_ids: List[str]) -> List[Song]:
         """
         Get songs by ids (sync).
-        
+
         Args:
             audios_ids (List[str]): The list of audio IDs in the format "[owner_id]_[audio_id]".
 
@@ -310,9 +321,9 @@ class Service:
             VkApiException: If the response contains an error.
         """
         if len(audios_ids) == 0:
-            self.logger.warning("List of audio ids is empty.")
+            self._log(level="warning", msg="List of audio ids is empty.")
             return []
-        self.logger.info(f"Request songs by ids: {','.join(audios_ids)}")
+        self._log(f"Request songs by ids: {','.join(audios_ids)}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get_by_id(
             audios_ids
         )
@@ -321,9 +332,9 @@ class Service:
         response.data = {"items": response.data}
         songs: List[Song] = Converter.response_to_songs(response)
         if len(songs) == 0:
-            self.logger.info("No results found ._.")
+            self._log("No results found ._.")
         else:
-            self.logger.info(f"Found {len(songs)} songs")
+            self._log(f"Found {len(songs)} songs")
         return songs
 
     async def get_songs_by_id_async(self, audios_ids: List[str]) -> List[Song]:
@@ -340,9 +351,9 @@ class Service:
             VkApiException: If the response contains an error.
         """
         if len(audios_ids) == 0:
-            self.logger.warning("List of audio ids is empty.")
+            self._log(level="warning", msg="List of audio ids is empty.")
             return []
-        self.logger.info(f"Request songs by ids: {','.join(audios_ids)}")
+        self._log(f"Request songs by ids: {','.join(audios_ids)}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get_by_id(
             audios_ids
         )
@@ -351,9 +362,9 @@ class Service:
         response.data = {"items": response.data}
         songs: List[Song] = Converter.response_to_songs(response)
         if len(songs) == 0:
-            self.logger.info("No results found ._.")
+            self._log("No results found ._.")
         else:
-            self.logger.info(f"Found {len(songs)} songs")
+            self._log(f"Found {len(songs)} songs")
         return songs
 
     def get_songs_by_userid(
@@ -374,7 +385,7 @@ class Service:
             VkApiException: If the response contains an error.
         """
         user_id = int(user_id)
-        self.logger.info(f"Request by user: {user_id}")
+        self._log(f"Request by user: {user_id}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get(
             user_id, count, offset
         )
@@ -382,9 +393,9 @@ class Service:
         response: VkApiResponse = make_request(request)
         songs: List[Song] = Converter.response_to_songs(response)
         if len(songs) == 0:
-            self.logger.info("No results found ._.")
+            self._log("No results found ._.")
         else:
-            self.logger.info(f"Found {len(songs)} songs")
+            self._log(f"Found {len(songs)} songs")
         return songs
 
     async def get_songs_by_userid_async(
@@ -405,7 +416,7 @@ class Service:
             VkApiException: If the response contains an error.
         """
         user_id = int(user_id)
-        self.logger.info(f"Request by user: {user_id}")
+        self._log(f"Request by user: {user_id}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get(
             user_id, count, offset
         )
@@ -413,9 +424,9 @@ class Service:
         response: VkApiResponse = await make_request_async(request)
         songs: List[Song] = Converter.response_to_songs(response)
         if len(songs) == 0:
-            self.logger.info("No results found ._.")
+            self._log("No results found ._.")
         else:
-            self.logger.info(f"Found {len(songs)} songs")
+            self._log(f"Found {len(songs)} songs")
         return songs
 
     def get_songs_by_playlist_id(
@@ -443,7 +454,7 @@ class Service:
             VkApiException: If the response contains an error.
         """
         user_id = int(user_id)
-        self.logger.info(f"Request by user: {user_id}")
+        self._log(f"Request by user: {user_id}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get(
             user_id, count, offset, playlist_id, access_key
         )
@@ -451,9 +462,9 @@ class Service:
         response: VkApiResponse = make_request(request)
         songs: List[Song] = Converter.response_to_songs(response)
         if len(songs) == 0:
-            self.logger.info("No results found ._.")
+            self._log("No results found ._.")
         else:
-            self.logger.info(f"Found {len(songs)} songs")
+            self._log(f"Found {len(songs)} songs")
         return songs
 
     async def get_songs_by_playlist_id_async(
@@ -481,7 +492,7 @@ class Service:
             VkApiException: If the response contains an error.
         """
         user_id = int(user_id)
-        self.logger.info(f"Request by user: {user_id}")
+        self._log(f"Request by user: {user_id}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get(
             user_id, count, offset, playlist_id, access_key
         )
@@ -489,9 +500,9 @@ class Service:
         response: VkApiResponse = await make_request_async(request)
         songs: List[Song] = Converter.response_to_songs(response)
         if len(songs) == 0:
-            self.logger.info("No results found ._.")
+            self._log("No results found ._.")
         else:
-            self.logger.info(f"Found {len(songs)} songs")
+            self._log(f"Found {len(songs)} songs")
         return songs
 
     def get_songs_by_playlist(
@@ -511,7 +522,7 @@ class Service:
         Raises:
             VkApiException: If the response contains an error.
         """
-        self.logger.info(f"Request by playlist: {playlist}")
+        self._log(f"Request by playlist: {playlist}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get(
             playlist.owner_id, count, offset, playlist.playlist_id, playlist.access_key
         )
@@ -519,9 +530,9 @@ class Service:
         response: VkApiResponse = make_request(request)
         songs: List[Song] = Converter.response_to_songs(response)
         if len(songs) == 0:
-            self.logger.info("No results found ._.")
+            self._log("No results found ._.")
         else:
-            self.logger.info(f"Found {len(songs)} songs")
+            self._log(f"Found {len(songs)} songs")
         return songs
 
     async def get_songs_by_playlist_async(
@@ -541,7 +552,7 @@ class Service:
         Raises:
             VkApiException: If the response contains an error.
         """
-        self.logger.info(f"Request by playlist: {playlist}")
+        self._log(f"Request by playlist: {playlist}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get(
             playlist.owner_id, count, offset, playlist.playlist_id, playlist.access_key
         )
@@ -549,9 +560,9 @@ class Service:
         response: VkApiResponse = await make_request_async(request)
         songs: List[Song] = Converter.response_to_songs(response)
         if len(songs) == 0:
-            self.logger.info("No results found ._.")
+            self._log("No results found ._.")
         else:
-            self.logger.info(f"Found {len(songs)} songs")
+            self._log(f"Found {len(songs)} songs")
         return songs
 
     def search_songs_by_text(
@@ -571,7 +582,7 @@ class Service:
         Raises:
             VkApiException: If the response contains an error.
         """
-        self.logger.info(f'Request by text: "{text}" в количестве {count}')
+        self._log(f'Request by text: "{text}" в количестве {count}')
         request: VkApiRequest = VkApiRequestBuilder.build_req_search(
             text, count, offset
         )
@@ -579,9 +590,9 @@ class Service:
         response: VkApiResponse = make_request(request)
         songs: List[Song] = Converter.response_to_songs(response)
         if len(songs) == 0:
-            self.logger.info("No results found ._.")
+            self._log("No results found ._.")
         else:
-            self.logger.info(f"Found {len(songs)} songs")
+            self._log(f"Found {len(songs)} songs")
         return songs
 
     async def search_songs_by_text_async(
@@ -601,7 +612,7 @@ class Service:
         Raises:
             VkApiException: If the response contains an error.
         """
-        self.logger.info(f'Request by text: "{text}" в количестве {count}')
+        self._log(f'Request by text: "{text}" в количестве {count}')
         request: VkApiRequest = VkApiRequestBuilder.build_req_search(
             text, count, offset
         )
@@ -609,9 +620,9 @@ class Service:
         response: VkApiResponse = await make_request_async(request)
         songs: List[Song] = Converter.response_to_songs(response)
         if len(songs) == 0:
-            self.logger.info("No results found ._.")
+            self._log("No results found ._.")
         else:
-            self.logger.info(f"Found {len(songs)} songs")
+            self._log(f"Found {len(songs)} songs")
         return songs
 
     # Playlists and albums section
@@ -633,7 +644,7 @@ class Service:
             VkApiException: If the response contains an error.
         """
         user_id = int(user_id)
-        self.logger.info(f"Request by user: {user_id}")
+        self._log(f"Request by user: {user_id}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get_playlists(
             user_id, count, offset
         )
@@ -660,7 +671,7 @@ class Service:
             VkApiException: If the response contains an error.
         """
         user_id = int(user_id)
-        self.logger.info(f"Request by user: {user_id}")
+        self._log(f"Request by user: {user_id}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get_playlists(
             user_id, count, offset
         )
@@ -687,7 +698,7 @@ class Service:
         Raises:
             VkApiException: If the response contains an error.
         """
-        self.logger.info(f"Request by text: {text}")
+        self._log(f"Request by text: {text}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_search_playlists(
             text, count, offset
         )
@@ -714,7 +725,7 @@ class Service:
         Raises:
             VkApiException: If the response contains an error.
         """
-        self.logger.info(f"Request by text: {text}")
+        self._log(f"Request by text: {text}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_search_playlists(
             text, count, offset
         )
@@ -742,7 +753,7 @@ class Service:
         Raises:
             VkApiException: If the response contains an error.
         """
-        self.logger.info(f"Request by text: {text}")
+        self._log(f"Request by text: {text}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_search_albums(
             text, count, offset
         )
@@ -770,7 +781,7 @@ class Service:
         Raises:
             VkApiException: If the response contains an error.
         """
-        self.logger.info(f"Request by text: {text}")
+        self._log(f"Request by text: {text}")
         request: VkApiRequest = VkApiRequestBuilder.build_req_search_albums(
             text, count, offset
         )
@@ -794,7 +805,7 @@ class Service:
         Raises:
             VkApiException: If the response contains an error.
         """
-        self.logger.info("Request popular songs")
+        self._log("Request popular songs")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get_popular(count, offset)
         self.fill_user_agent_and_token(request)
         response: VkApiResponse = make_request(request)
@@ -815,7 +826,7 @@ class Service:
         Raises:
             VkApiException: If the response contains an error.
         """
-        self.logger.info("Request popular songs")
+        self._log("Request popular songs")
         request: VkApiRequest = VkApiRequestBuilder.build_req_get_popular(count, offset)
         self.fill_user_agent_and_token(request)
         response: VkApiResponse = await make_request_async(request)
@@ -845,7 +856,7 @@ class Service:
         Raises:
             VkApiException: If the response contains an error.
         """
-        self.logger.info(
+        self._log(
             f"Request recommendations by user id: {user_id or '[NOT SET]'} and song id: {song_id or '[NOT SET]'}"
         )
         request: VkApiRequest = VkApiRequestBuilder.build_req_get_recommendations(
@@ -878,7 +889,7 @@ class Service:
         Raises:
             VkApiException: If the response contains an error.
         """
-        self.logger.info(
+        self._log(
             f"Request recommendations by user id: {user_id or '[NOT SET]'} and song id: {song_id or '[NOT SET]'}"
         )
         request: VkApiRequest = VkApiRequestBuilder.build_req_get_recommendations(
@@ -891,8 +902,7 @@ class Service:
 
     ################
     # EXTENSION METHODS
-    @classmethod
-    def save_music(cls, song: Song, overwrite: bool = False) -> Optional[str]:
+    def save_music(self, song: Song, overwrite: bool = False) -> Optional[str]:
         """
         Save song (sync) to '{workDirectory}/Music/{song name}.mp3'.
         If you wanna another behavior, you can override this method
@@ -900,7 +910,7 @@ class Service:
 
         Args:
             song (Song): 'Song' instance obtained from 'Service' methods.
-            overwrite (bool): If True, overwrite file if it exists. By default doesn't overwrite.
+            overwrite (bool): If True, overwrite file if it exists. By default, doesn't overwrite.
 
         Returns:
             str: relative path of downloaded music or None if error.
@@ -909,10 +919,10 @@ class Service:
         file_name_mp3 = f"{song}.mp3"
         url = song.url
         if not url:
-            cls.logger.warning("Url no found")
+            self._log(level="warning", msg="Url not found")
             return None
         elif "index.m3u8" in url:
-            cls.logger.error(".m3u8 detected!")
+            self._log(level="error", msg=".m3u8 detected!")
             return None
 
         try:
@@ -920,42 +930,40 @@ class Service:
                 response: Response = client.get(url)
 
             if response.status_code != 200:
-                cls.logger.error(
-                    f"Error while downloading {song}: {response.status_code}"
-                )
+                self._log(level="error",
+                          msg=f"Error while downloading {song}: {response.status_code}")
                 return None
         except Exception as e:
-            cls.logger.error(f"Error while downloading {song}: {e}")
+            self._log(level="error", msg=f"Error while downloading {song}: {e}")
             return None
 
         music_dir: str = os.path.join(os.getcwd(), "Music")
         if not os.path.exists(music_dir):
             os.makedirs(music_dir)
-            cls.logger.info("Folder 'Music' was created")
+            self._log("Folder 'Music' was created")
 
         file_path: str = os.path.join(music_dir, file_name_mp3)
         if os.path.exists(file_path):
-            cls.logger.info(f"File with name {file_name_mp3} already exists.")
+            self._log(f"File with name {file_name_mp3} already exists.")
             if overwrite:
-                cls.logger.info("File will be overwritten")
+                self._log("File will be overwritten")
             else:
-                cls.logger.info("File will not be overwritten")
+                self._log("File will not be overwritten")
                 return file_path
 
-        cls.logger.info(f"Downloading {song}...")
+        self._log(f"Downloading {song}...")
 
         try:
             with open(file_path, "wb") as output_file:
                 output_file.write(response.content)
-            cls.logger.info(f"Success! Music was downloaded in '{file_path}'")
+            self._log(f"Success! Music was downloaded in '{file_path}'")
             return file_path
         except Exception as e:
-            cls.logger.error(f"Error while saving {song}: {e}")
+            self._log(level="error", msg=f"Error while saving {song}: {e}")
             return None
 
-    @classmethod
     async def save_music_async(
-        cls, song: Song, overwrite: bool = False
+        self, song: Song, overwrite: bool = False
     ) -> Optional[str]:
         """
         Save song (async) to '{workDirectory}/Music/{song name}.mp3'.
@@ -964,7 +972,7 @@ class Service:
 
         Args:
             song (Song): 'Song' instance obtained from 'Service' methods.
-            overwrite (bool): If True, overwrite file if it exists. By default doesn't overwrite.
+            overwrite (bool): If True, overwrite file if it exists. By default, doesn't overwrite.
 
         Returns:
             str: relative path of downloaded music or None if error.
@@ -973,10 +981,10 @@ class Service:
         file_name_mp3 = f"{song}.mp3"
         url = song.url
         if not url:
-            cls.logger.warning("Url no found")
+            self._log(level="warning", msg="Url not found")
             return None
         elif "index.m3u8" in url:
-            cls.logger.error(".m3u8 detected!")
+            self._log(level="error", msg=".m3u8 detected!")
             return None
 
         try:
@@ -984,35 +992,34 @@ class Service:
                 response: Response = await client.get(url)
 
             if response.status_code != 200:
-                cls.logger.error(
-                    f"Error while downloading {song}: {response.status_code}"
-                )
+                self._log(level="error",
+                          msg=f"Error while downloading {song}: {response.status_code}")
                 return None
         except Exception as e:
-            cls.logger.error(f"Error while downloading {song}: {e}")
+            self._log(level="error", msg=f"Error while downloading {song}: {e}")
             return None
 
         music_dir: str = os.path.join(os.getcwd(), "Music")
         if not os.path.exists(music_dir):
             os.makedirs(music_dir)
-            cls.logger.info("Folder 'Music' was created")
+            self._log("Folder 'Music' was created")
 
         file_path: str = os.path.join(music_dir, file_name_mp3)
         if os.path.exists(file_path):
-            cls.logger.info(f"File with name {file_name_mp3} already exists.")
+            self._log(f"File with name {file_name_mp3} already exists.")
             if overwrite:
-                cls.logger.info("File will be overwritten")
+                self._log("File will be overwritten")
             else:
-                cls.logger.info("File will not be overwritten")
+                self._log("File will not be overwritten")
                 return file_path
 
-        cls.logger.info(f"Downloading {song}...")
+        self._log(f"Downloading {song}...")
 
         try:
             async with aiofiles.open(file_path, "wb") as output_file:
                 await output_file.write(response.content)
-            cls.logger.info(f"Success! Music was downloaded in '{file_path}'")
+            self._log(f"Success! Music was downloaded in '{file_path}'")
             return file_path
         except Exception as e:
-            cls.logger.error(f"Error while saving {song}: {e}")
+            self._log(f"Error while saving {song}: {e}")
             return None

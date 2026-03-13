@@ -12,11 +12,11 @@ service = Service.parse_config()
 # 1. Disable logging to the console
 # 2. WARNING level logging to the file
 logger1 = create_logger("logger1", console=False, file=True)
-service.set_logger(logger1) # or Service.set_logger(logger1)
+service.set_logger(logger1)
 
 # Here we set the custom logger with custom configuration:
-# 1. Disable logging to the console
-# 2. INFO level logging to the file
+# 1. INFO level logging to the console
+# 2. Disable logging to the file
 logger2 = logging.getLogger("logger2")
 logger2.setLevel(logging.INFO)
-service.set_logger(logger2) # or Service.set_logger(logger2)
+service.set_logger(logger2)

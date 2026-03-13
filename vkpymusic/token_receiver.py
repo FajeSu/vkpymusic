@@ -44,7 +44,7 @@ class TokenReceiver:
         __login (str): The login.
         __password (str): The password.
         __token (str): The token.
-        _logger (logging.Logger): The logger.
+        __logger (logging.Logger): The logger.
 
     Example usage:
     ```
@@ -64,7 +64,7 @@ class TokenReceiver:
         login: str,
         password: str,
         client: str = "Kate",
-        logger: logging.Logger = create_logger(__name__),
+        default_logging: bool = True,
     ) -> None:
         """
         Initialize TokenReceiver.
@@ -73,7 +73,7 @@ class TokenReceiver:
             login (str): Login to VK.
             password (str): Password to VK.
             client (str): Client to VK (default value = "Kate").
-            logger (logging.Logger): Logger (default value = my logger).
+            default_logging (bool): Using or not the base logger.
         """
         self.__login: str = str(login)
         self.__password: str = str(password)
@@ -82,7 +82,29 @@ class TokenReceiver:
         else:
             self.client = clients["Kate"]
         self.__token = None
-        self._logger = logger
+        self.__logger = None
+        if default_logging:
+            self.set_logger()
+
+    def set_logger(self, logger: logging.Logger = None) -> None:
+        """
+        Set logger for object.
+
+        Args:
+            logger (logging.Logger): Logger.
+        """
+        if logger is False:
+            self.__logger = None
+        elif logger is not None:
+            self.__logger = logger
+        elif self.__logger is None:
+            self.__logger = create_logger(self.__class__.__name__)
+
+    def _log(self, msg: str, level: str = "info"):
+        if self.__logger \
+           and hasattr(self.__logger, level) \
+           and callable(getattr(self.__logger, level)):
+            getattr(self.__logger, level)(msg)
 
     #################
     # PRIVATE METHODS
@@ -189,7 +211,7 @@ class TokenReceiver:
 
                 token: str = response.data.get("access_token", None)
                 if token is not None:
-                    self._logger.info("Token was received!")
+                    self._log("Token was received!")
                     self.__token = token
                     return True
 
@@ -211,23 +233,23 @@ class TokenReceiver:
 
                 # Captcha is needed
                 if error == "need_captcha":
-                    self._logger.info("Captcha is needed!")
+                    self._log("Captcha is needed!")
                     captcha_sid: str = problem_response["captcha_sid"]
                     captcha_img: str = problem_response["captcha_img"]
                     captcha_key: str = on_captcha(captcha_img)
                     captcha = (captcha_sid, captcha_key)
                 # 2FA is needed
                 elif error == "need_validation":
-                    self._logger.info("2fa is needed!")
+                    self._log("2fa is needed!")
                     validation_type = problem_response["validation_type"]
                     validation_description = problem_response["error_description"]
                     # 2FA app is needed
                     if validation_type == "2fa_app":
-                        self._logger.info("Code from 2FA app is needed!")
+                        self._log("Code from 2FA app is needed!")
                     # Other type of 2FA
                     else:
-                        self._logger.info(f"{validation_type} {validation_description}")
-                        self._logger.info(
+                        self._log(f"{validation_type} {validation_description}")
+                        self._log(
                             "Please, create an issue in repository for adding this type."
                         )
                     # Request code from VK
@@ -236,11 +258,11 @@ class TokenReceiver:
                     code = on_2fa()
                 # Invalid code for 2FA
                 elif error == "invalid_request":
-                    self._logger.warning("Invalid code. Try again!")
+                    self._log(level="warning", msg="Invalid code. Try again!")
                     code = on_2fa()
                 # Login or password is invalid
                 elif error == "invalid_client":
-                    self._logger.error("Login or password is invalid!")
+                    self._log(level="error", msg="Login or password is invalid!")
                     del self.__login
                     del self.__password
                     on_invalid_client()
@@ -250,7 +272,7 @@ class TokenReceiver:
                     error == "9;Flood control"
                     or error_type == "password_bruteforce_attempt"
                 ):
-                    self._logger.error("Password bruteforce attempt!")
+                    self._log(level="error", msg="Password bruteforce attempt!")
                     del self.__login
                     del self.__password
                     return False
@@ -297,7 +319,7 @@ class TokenReceiver:
 
                 token: str = response.data.get("access_token", None)
                 if token is not None:
-                    self._logger.info("Token was received!")
+                    self._log("Token was received!")
                     self.__token = token
                     return True
 
@@ -319,23 +341,23 @@ class TokenReceiver:
 
                 # Captcha is needed
                 if error == "need_captcha":
-                    self._logger.info("Captcha is needed!")
+                    self._log("Captcha is needed!")
                     captcha_sid: str = problem_response["captcha_sid"]
                     captcha_img: str = problem_response["captcha_img"]
                     captcha_key: str = await on_captcha(captcha_img)
                     captcha = (captcha_sid, captcha_key)
                 # 2FA is needed
                 elif error == "need_validation":
-                    self._logger.info("2fa is needed!")
+                    self._log("2fa is needed!")
                     validation_type = problem_response["validation_type"]
                     validation_description = problem_response["error_description"]
                     # 2FA app is needed
                     if validation_type == "2fa_app":
-                        self._logger.info("Code from 2FA app is needed!")
+                        self._log("Code from 2FA app is needed!")
                     # Other type of 2FA
                     else:
-                        self._logger.info(f"{validation_type} {validation_description}")
-                        self._logger.info(
+                        self._log(f"{validation_type} {validation_description}")
+                        self._log(
                             "Please, create an issue in repository for adding this type."
                         )
                     # Request code from VK
@@ -344,11 +366,11 @@ class TokenReceiver:
                     code = await on_2fa()
                 # Invalid code for 2FA
                 elif error == "invalid_request":
-                    self._logger.warning("Invalid code. Try again!")
+                    self._log(level="warning", msg="Invalid code. Try again!")
                     code = await on_2fa()
                 # Login or password is invalid
                 elif error == "invalid_client":
-                    self._logger.error("Login or password is invalid!")
+                    self._log(level="error", msg="Login or password is invalid!")
                     del self.__login
                     del self.__password
                     await on_invalid_client()
@@ -358,7 +380,7 @@ class TokenReceiver:
                     error == "9;Flood control"
                     or error_type == "password_bruteforce_attempt"
                 ):
-                    self._logger.error("Password bruteforce attempt!")
+                    self._log(level="error", msg="Password bruteforce attempt!")
                     del self.__login
                     del self.__password
                     return False
@@ -377,9 +399,9 @@ class TokenReceiver:
         """
         token = self.__token
         if not token:
-            self._logger.warning('Please, first call the method "auth".')
+            self._log(level="warning", msg='Please, first call the method "auth".')
             return
-        self._logger.info(token)
+        self._log(token)
         return token
 
     def save_to_config(self, file_path: str = "config_vk.ini"):
@@ -391,23 +413,22 @@ class TokenReceiver:
         """
         token: str = self.__token
         if not token:
-            self._logger.warning('Please, first call the method "auth"')
+            self._log(level="warning", msg='Please, first call the method "auth"')
             return
         full_fp = self.create_path(file_path)
         if os.path.isfile(full_fp):
-            self._logger.warning("File already exist! It will be overwritten.")
+            self._log(level="warning", msg="File already exist! It will be overwritten.")
         os.makedirs(os.path.dirname(full_fp), exist_ok=True)
         with open(full_fp, "w") as output_file:
             output_file.write("[VK]\n")
             output_file.write(f"user_agent={self.client.user_agent}\n")
             output_file.write(f"token_for_audio={token}")
-            self._logger.info("Token was saved!")
+            self._log("Token was saved!")
 
     def __on_error(self, response):
-        self._logger.critical(
-            "Unexpected error! Please, create an issue in repository for solving this problem."
-        )
-        self._logger.critical(response)
+        self._log(level="critical",
+                  msg="Unexpected error! Please, create an issue in repository for solving this problem.")
+        self._log(level="critical", msg=response)
 
     @staticmethod
     def create_path(file_path: str) -> str:

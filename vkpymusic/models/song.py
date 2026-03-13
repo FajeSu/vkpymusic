@@ -25,6 +25,9 @@ class Song:
     owner_id: str
     url: str
 
+    _title_safe: str
+    _artist_safe: str
+
     def __init__(
         self,
         title: str,
@@ -52,8 +55,16 @@ class Song:
         self.owner_id = owner_id
         self.url = url
 
+        pattern = r"[^A-zА-я0-9+\-\s]"
+
+        self._title_safe = re.sub(pattern, "", self.title)
+        self._artist_safe = re.sub(pattern, "", self.artist)
+
     def __str__(self):
-        return f"{self.title} - {self.artist}"
+        return self.to_string()
+
+    def to_string(self, safe: bool = False):
+        return f"{self._title_safe if safe else self.title} - {self._artist_safe if safe else self.artist}"
 
     def to_dict(self) -> dict:
         """
@@ -66,15 +77,9 @@ class Song:
 
     def to_safe(self):
         """
-        Removes all non-alphanumeric characters from the song's title and artist.
+        Deprecated
         """
-
-        def safe_format(string):
-            safe_string = re.sub(r"[^A-zА-я0-9+\s]", "", string)
-            return safe_string
-
-        self.title = safe_format(self.title)
-        self.artist = safe_format(self.artist)
+        pass
 
     @classmethod
     def from_json(cls, item) -> "Song":

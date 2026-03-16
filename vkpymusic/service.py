@@ -904,20 +904,26 @@ class Service:
     ################
     # EXTENSION METHODS
     @classmethod
-    def save_music(cls, song: Song, overwrite: bool = False) -> Optional[str]:
+    def save_music(
+        cls,
+        song: Song,
+        overwrite: bool = False,
+        music_dir: str = None
+    ) -> Optional[str]:
         """
-        Save song (sync) to '{workDirectory}/Music/{song name}.mp3'.
+        Save song (sync) to '{workDirectory}/{music_dir}/{song safe name}.mp3'.
         If you wanna another behavior, you can override this method
         or use your own method for saving music.
 
         Args:
             song (Song): 'Song' instance obtained from 'Service' methods.
-            overwrite (bool): If True, overwrite file if it exists. By default doesn't overwrite.
+            overwrite (bool): If True, overwrite file if it exists. By default, doesn't overwrite.
+            music_dir (str): Directory name to save the file.
 
         Returns:
             str: relative path of downloaded music or None if error.
         """
-        song.to_safe()
+        song_name = song.to_string()
         file_name_mp3 = f"{song}.mp3"
         url = song.url
         if not url:
@@ -933,18 +939,19 @@ class Service:
 
             if response.status_code != 200:
                 cls.__log(level="error",
-                          msg=f"Error while downloading {song}: {response.status_code}")
+                          msg=f"Error while downloading {song_name}: {response.status_code}")
                 return None
         except Exception as e:
-            cls.__log(level="error", msg=f"Error while downloading {song}: {e}")
+            cls.__log(level="error", msg=f"Error while downloading {song_name}: {e}")
             return None
 
-        music_dir: str = os.path.join(os.getcwd(), "Music")
-        if not os.path.exists(music_dir):
-            os.makedirs(music_dir)
-            cls.__log(f"Folder 'Music' was created")
+        music_dir = str(music_dir or "").strip() or "Music"
+        music_path: str = os.path.join(os.getcwd(), music_dir)
+        if not os.path.exists(music_path):
+            os.makedirs(music_path)
+            cls.__log(f"Folder '{music_dir}' was created")
 
-        file_path: str = os.path.join(music_dir, file_name_mp3)
+        file_path: str = os.path.join(music_path, file_name_mp3)
         if os.path.exists(file_path):
             cls.__log(f"File with name {file_name_mp3} already exists.")
             if overwrite:
@@ -953,7 +960,7 @@ class Service:
                 cls.__log("File will not be overwritten")
                 return file_path
 
-        cls.__log(f"Downloading {song}...")
+        cls.__log(f"Downloading {song_name}...")
 
         try:
             with open(file_path, "wb") as output_file:
@@ -961,26 +968,30 @@ class Service:
             cls.__log(f"Success! Music was downloaded in '{file_path}'")
             return file_path
         except Exception as e:
-            cls.__log(level="error", msg=f"Error while saving {song}: {e}")
+            cls.__log(level="error", msg=f"Error while saving {song_name}: {e}")
             return None
 
     @classmethod
     async def save_music_async(
-        cls, song: Song, overwrite: bool = False
+        cls,
+        song: Song,
+        overwrite: bool = False,
+        music_dir: str = None
     ) -> Optional[str]:
         """
-        Save song (async) to '{workDirectory}/Music/{song name}.mp3'.
+        Save song (async) to '{workDirectory}/{music_dir}/{song safe name}.mp3'.
         If you wanna another behavior, you can override this method
         or use your own method for saving music.
 
         Args:
             song (Song): 'Song' instance obtained from 'Service' methods.
-            overwrite (bool): If True, overwrite file if it exists. By default doesn't overwrite.
+            overwrite (bool): If True, overwrite file if it exists. By default, doesn't overwrite.
+            music_dir (str): Directory name to save the file.
 
         Returns:
             str: relative path of downloaded music or None if error.
         """
-        song.to_safe()
+        song_name = song.to_string()
         file_name_mp3 = f"{song}.mp3"
         url = song.url
         if not url:
@@ -996,18 +1007,19 @@ class Service:
 
             if response.status_code != 200:
                 cls.__log(level="error",
-                          msg=f"Error while downloading {song}: {response.status_code}")
+                          msg=f"Error while downloading {song_name}: {response.status_code}")
                 return None
         except Exception as e:
-            cls.__log(level="error", msg=f"Error while downloading {song}: {e}")
+            cls.__log(level="error", msg=f"Error while downloading {song_name}: {e}")
             return None
 
-        music_dir: str = os.path.join(os.getcwd(), "Music")
-        if not os.path.exists(music_dir):
-            os.makedirs(music_dir)
-            cls.__log(f"Folder 'Music' was created")
+        music_dir = str(music_dir or "").strip() or "Music"
+        music_path: str = os.path.join(os.getcwd(), music_dir)
+        if not os.path.exists(music_path):
+            os.makedirs(music_path)
+            cls.__log(f"Folder '{music_dir}' was created")
 
-        file_path: str = os.path.join(music_dir, file_name_mp3)
+        file_path: str = os.path.join(music_path, file_name_mp3)
         if os.path.exists(file_path):
             cls.__log(f"File with name {file_name_mp3} already exists.")
             if overwrite:
@@ -1016,7 +1028,7 @@ class Service:
                 cls.__log("File will not be overwritten")
                 return file_path
 
-        cls.__log(f"Downloading {song}...")
+        cls.__log(f"Downloading {song_name}...")
 
         try:
             async with aiofiles.open(file_path, "wb") as output_file:
@@ -1024,5 +1036,5 @@ class Service:
             cls.__log(f"Success! Music was downloaded in '{file_path}'")
             return file_path
         except Exception as e:
-            cls.__log(f"Error while saving {song}: {e}")
+            cls.__log(f"Error while saving {song_name}: {e}")
             return None

@@ -3,6 +3,7 @@ This module contains the Song class.
 """
 
 import re
+from unidecode import unidecode
 
 
 class Song:
@@ -17,13 +18,6 @@ class Song:
         owner_id (str): The ID of the song's owner.
         url (str): The URL of the song.
     """
-
-    title: str
-    artist: str
-    duration: int
-    track_id: str
-    owner_id: str
-    url: str
 
     def __init__(
         self,
@@ -52,8 +46,21 @@ class Song:
         self.owner_id = owner_id
         self.url = url
 
+        def safe_format(string):
+            pattern = r"[^a-zA-Zа-яА-ЯёЁ0-9!@#№\$;%\^&\(\)\[\]\{\}~`',\.\-+\s]"
+            # unidecode everything except latin, cyrillic and special symbols
+            string = re.sub(pattern, lambda x: unidecode(x.group()), string)
+            # remove everything except latin, cyrillic and special symbols
+            return re.sub(pattern, "", string)
+
+        self._title_safe = safe_format(self.title)
+        self._artist_safe = safe_format(self.artist)
+
     def __str__(self):
-        return f"{self.title} - {self.artist}"
+        return self.to_string(safe=True)
+
+    def to_string(self, safe: bool = False):
+        return f"{self._title_safe if safe else self.title} - {self._artist_safe if safe else self.artist}"
 
     def to_dict(self) -> dict:
         """
@@ -66,15 +73,9 @@ class Song:
 
     def to_safe(self):
         """
-        Removes all non-alphanumeric characters from the song's title and artist.
+        Deprecated
         """
-
-        def safe_format(string):
-            safe_string = re.sub(r"[^A-zА-я0-9+\s]", "", string)
-            return safe_string
-
-        self.title = safe_format(self.title)
-        self.artist = safe_format(self.artist)
+        pass
 
     @classmethod
     def from_json(cls, item) -> "Song":

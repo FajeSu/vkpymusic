@@ -39,7 +39,8 @@ class Song:
             owner_id (str): The ID of the song's owner.
             url (str): The URL of the song.
         """
-        self.title = title
+        # replace double descriptions in parentheses
+        self.title = re.sub(r'(?P<desc>\(.+?\))\s+(?P=desc)', r'\g<desc>', title)
         self.artist = artist
         self.duration = duration
         self.track_id = track_id
@@ -59,8 +60,11 @@ class Song:
     def __str__(self):
         return self.to_string(safe=True)
 
-    def to_string(self, safe: bool = False):
-        return f"{self._title_safe if safe else self.title} - {self._artist_safe if safe else self.artist}"
+    def to_string(self, safe: bool = False, artist_first: bool = False):
+        title = self._title_safe if safe else self.title
+        artist = self._artist_safe if safe else self.artist
+
+        return f"{artist} - {title}" if artist_first else f"{title} - {artist}"
 
     def to_dict(self) -> dict:
         """

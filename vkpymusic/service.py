@@ -2,13 +2,15 @@
 This module contains the main class 'Service' for working with VK API.
 """
 
+import asyncio
 import os
 import configparser
 import logging
 from typing import Optional, Union, List
 
 import aiofiles
-from httpx import Client, AsyncClient, Response
+from curl_cffi import requests as curl_requests
+from curl_cffi.requests import AsyncSession
 
 from .vk_api import (
     VkApiRequestBuilder,
@@ -19,7 +21,7 @@ from .vk_api import (
     make_request_async,
 )
 from .models import Song, Playlist, UserInfo
-from .utils import Converter, create_logger
+from .utils import Converter, create_logger, download_m3u8_as_mp3_pyav
 
 
 class Service:
@@ -33,14 +35,17 @@ class Service:
 
     Example usage:
     ```
-    >>> service = Service.parse_config()
-    >>> songs = service.search_songs_by_text("Imagine Dragons")
-    >>> for song in songs:
-    ...     Service.save_music(song)
-    >>> // or
-    >>> songs = await service.search_songs_by_text_async("Imagine Dragons")
-    >>> for song in songs:
-    ...     await Service.save_music_async(song)
+    >>> def example_sync():
+    >>>     service = Service.parse_config()
+    >>>     songs = service.search_songs_by_text("Imagine Dragons")
+    >>>     for song in songs:
+    ...         Service.save_music(song)
+    >>> # or
+    >>> async def example_async():
+    >>>     service = Service.parse_config()
+    >>>     songs = await service.search_songs_by_text_async("Imagine Dragons")
+    >>>     for song in songs:
+    ...         await Service.save_music_async(song)
     ```
     """
 
@@ -81,6 +86,42 @@ class Service:
            and callable(getattr(cls.__logger, level)):
             getattr(cls.__logger, level)(msg)
 
+    @classmethod
+    def __prepare_music_path(
+        cls,
+        file_name: str,
+        overwrite: bool = False,
+        music_dir: str = None,
+    ) -> tuple[str, bool]:
+        """
+        Create the Music directory if needed and resolve the output file path.
+
+        Args:
+            file_name (str): Target filename (e.g. ``song.mp3``).
+            overwrite (bool): If True, overwrite an existing file.
+            music_dir (str): Directory name to save the file.
+
+        Returns:
+            tuple[str, bool]: ``(file_path, skip)`` — absolute path to the file and
+            a flag that is ``True`` when the file already exists and *overwrite* is
+            ``False`` (caller should return ``file_path`` immediately).
+        """
+        music_dir = str(music_dir or "").strip() or "Music"
+        music_path: str = os.path.join(os.getcwd(), music_dir)
+        if not os.path.exists(music_path):
+            os.makedirs(music_path)
+            cls.__log(f"Folder '{music_dir}' was created")
+
+        file_path: str = os.path.join(music_path, file_name)
+        if os.path.exists(file_path):
+            cls.__log(f"File with name {file_name} already exists.")
+            if not overwrite:
+                cls.__log("File will not be overwritten")
+                return file_path, True
+            cls.__log("File will be overwritten")
+
+        return file_path, False
+
     ##################################
     # METHODS WITH WORKING WITH CONFIG
     @classmethod
@@ -90,6 +131,9 @@ class Service:
 
         Args:
             filename (str): Filename of config (default = "config_vk.ini").
+
+        Returns:
+            Service | None: Instance of 'Service', or None if config not found or invalid.
         """
         dirname = os.path.dirname(__file__)
         configfile_path = os.path.join(dirname, filename)
@@ -109,6 +153,9 @@ class Service:
 
         Args:
             filename (str): Filename of config (default value = "config_vk.ini").
+
+        Returns:
+            None
         """
         configfile_path = os.path.join(os.path.dirname(__file__), filename)
         try:
@@ -846,8 +893,8 @@ class Service:
         Get recommendations by user id or song id (sync). (Be careful, it always returns less than count)
 
         Args:
-            user_id (int):  VK user id. (NOT USERNAME! vk.com/id*******).
-            song_id (int):  VK song id.
+            user_id (int | None):  VK user id. (NOT USERNAME! vk.com/id*******).
+            song_id (int | None):  VK song id.
             count (int):    Count of resulting songs (for VK API: default = 50, max = 300).
             offset (int):   Set offset for result. For example, count = 100, offset = 100 -> 101-200.
 
@@ -879,8 +926,8 @@ class Service:
         Get recommendations by user id or song id (async). (Be careful, it always returns less than count)
 
         Args:
-            user_id (int):  VK user id. (NOT USERNAME! vk.com/id*******).
-            song_id (int):  VK song id.
+            user_id (int | None):  VK user id. (NOT USERNAME! vk.com/id*******).
+            song_id (int | None):  VK song id.
             count (int):    Count of resulting songs (for VK API: default = 50, max = 300).
             offset (int):   Set offset for result. For example, count = 100, offset = 100 -> 101-200.
 
@@ -921,7 +968,7 @@ class Service:
             music_dir (str): Directory name to save the file.
 
         Returns:
-            str: relative path of downloaded music or None if error.
+            str | None: Absolute path to the downloaded mp3 file, or None if error.
         """
         song_name = song.to_string()
         file_name_mp3 = f"{song}.mp3"
@@ -930,12 +977,20 @@ class Service:
             cls.__log(level="warning", msg="Url not found")
             return None
         elif "index.m3u8" in url:
-            cls.__log(level="error", msg=".m3u8 detected!")
-            return None
+            file_path, skip = cls.__prepare_music_path(file_name_mp3, overwrite, music_dir)
+            if skip:
+                return file_path
+            cls.__log(f"Downloading {song_name}...")
+            try:
+                download_m3u8_as_mp3_pyav(url, file_path)
+                cls.__log(f"Success! Music was downloaded in '{file_path}'")
+                return file_path
+            except Exception as e:
+                cls.__log(level="error", msg=f"Error while downloading {song_name}: {e}")
+                return None
 
         try:
-            with Client() as client:
-                response: Response = client.get(url)
+            response = curl_requests.get(url)
 
             if response.status_code != 200:
                 cls.__log(level="error",
@@ -945,20 +1000,9 @@ class Service:
             cls.__log(level="error", msg=f"Error while downloading {song_name}: {e}")
             return None
 
-        music_dir = str(music_dir or "").strip() or "Music"
-        music_path: str = os.path.join(os.getcwd(), music_dir)
-        if not os.path.exists(music_path):
-            os.makedirs(music_path)
-            cls.__log(f"Folder '{music_dir}' was created")
-
-        file_path: str = os.path.join(music_path, file_name_mp3)
-        if os.path.exists(file_path):
-            cls.__log(f"File with name {file_name_mp3} already exists.")
-            if overwrite:
-                cls.__log("File will be overwritten")
-            else:
-                cls.__log("File will not be overwritten")
-                return file_path
+        file_path, skip = cls.__prepare_music_path(file_name_mp3, overwrite, music_dir)
+        if skip:
+            return file_path
 
         cls.__log(f"Downloading {song_name}...")
 
@@ -989,7 +1033,7 @@ class Service:
             music_dir (str): Directory name to save the file.
 
         Returns:
-            str: relative path of downloaded music or None if error.
+            str | None: Absolute path to the downloaded mp3 file, or None if error.
         """
         song_name = song.to_string()
         file_name_mp3 = f"{song}.mp3"
@@ -998,12 +1042,21 @@ class Service:
             cls.__log(level="warning", msg="Url not found")
             return None
         elif "index.m3u8" in url:
-            cls.__log(level="error", msg=".m3u8 detected!")
-            return None
+            file_path, skip = cls.__prepare_music_path(file_name_mp3, overwrite, music_dir)
+            if skip:
+                return file_path
+            cls.__log(f"Downloading {song_name}...")
+            try:
+                await asyncio.to_thread(download_m3u8_as_mp3_pyav, url, file_path)
+                cls.__log(f"Success! Music was downloaded in '{file_path}'")
+                return file_path
+            except Exception as e:
+                cls.__log(level="error", msg=f"Error while downloading {song_name}: {e}")
+                return None
 
         try:
-            async with AsyncClient() as client:
-                response: Response = await client.get(url)
+            async with AsyncSession() as client:
+                response = await client.get(url)
 
             if response.status_code != 200:
                 cls.__log(level="error",
@@ -1013,20 +1066,9 @@ class Service:
             cls.__log(level="error", msg=f"Error while downloading {song_name}: {e}")
             return None
 
-        music_dir = str(music_dir or "").strip() or "Music"
-        music_path: str = os.path.join(os.getcwd(), music_dir)
-        if not os.path.exists(music_path):
-            os.makedirs(music_path)
-            cls.__log(f"Folder '{music_dir}' was created")
-
-        file_path: str = os.path.join(music_path, file_name_mp3)
-        if os.path.exists(file_path):
-            cls.__log(f"File with name {file_name_mp3} already exists.")
-            if overwrite:
-                cls.__log("File will be overwritten")
-            else:
-                cls.__log("File will not be overwritten")
-                return file_path
+        file_path, skip = cls.__prepare_music_path(file_name_mp3, overwrite, music_dir)
+        if skip:
+            return file_path
 
         cls.__log(f"Downloading {song_name}...")
 

@@ -9,7 +9,7 @@ import logging
 from typing import Callable, Awaitable, Tuple, Union, Optional, Dict
 
 
-from .client import clients
+from .client import Client, VkMobileClient
 from .vk_api import (
     VkApiRequestBuilder,
     VkApiRequest,
@@ -63,7 +63,7 @@ class TokenReceiver:
         self,
         login: str,
         password: str,
-        client: str = "Kate",
+        client: Client = VkMobileClient,
     ) -> None:
         """
         Initialize TokenReceiver.
@@ -71,14 +71,11 @@ class TokenReceiver:
         Args:
             login (str): Login to VK.
             password (str): Password to VK.
-            client (str): Client to VK (default value = "Kate").
+            client (Client): Client to VK (default value = VkMobileClient).
         """
         self.__login: str = str(login)
         self.__password: str = str(password)
-        if client in clients:
-            self.client = clients[client]
-        else:
-            self.client = clients["Kate"]
+        self.client = client
         self.__token = None
         self.__logger = None
 
@@ -109,7 +106,9 @@ class TokenReceiver:
 
     # synchronous
     def __request_auth(
-        self, code: Optional[str] = None, captcha: Optional[Tuple[str, str]] = None
+        self,
+        code: Optional[str] = None,
+        captcha: Optional[str] = None
     ) -> VkApiResponse:
         request: VkApiRequest = VkApiRequestBuilder.build_req_auth(
             login=self.__login,
@@ -142,7 +141,9 @@ class TokenReceiver:
 
     # asynchronous
     async def __request_auth_async(
-        self, code: Optional[str] = None, captcha: Optional[Tuple[str, str]] = None
+        self,
+        code: Optional[str] = None,
+        captcha: Optional[str] = None
     ) -> VkApiResponse:
         request: VkApiRequest = VkApiRequestBuilder.build_req_auth(
             login=self.__login,
@@ -187,16 +188,16 @@ class TokenReceiver:
         If necessary, interactively accepts a code from SMS or captcha.
 
         Args:
-            on_captcha (Callable[[str], str]): Handler to captcha. Get url image. Return key.
-            on_2fa (Callable[[], str]): Handler to 2-factor auth. Return captcha.
+            on_captcha (Callable[[str], str]): Handler to captcha. Get url image. Return captcha result.
+            on_2fa (Callable[[], str]): Handler to 2-factor auth. Return code.
             on_invalid_client (Callable[[], None]): Handler to invalid client.
-            on_critical_error (Callable[[Any], None]): Handler to critical error. Get response.
+            on_critical_error (Callable[..., None]): Handler to critical error. Get response.
 
         Returns:
             bool: Boolean value indicating whether authorization was successful or not.
         """
         code: Optional[str] = None
-        captcha: Optional[Tuple[str, str]] = None
+        captcha: Optional[str] = None
 
         while True:
             try:
@@ -207,7 +208,7 @@ class TokenReceiver:
                 del self.__login
                 del self.__password
 
-                token: str = response.data.get("access_token", None)
+                token: Optional[str] = response.data.get("access_token", None)
                 if token is not None:
                     self.__log("Token was received!")
                     self.__token = token
@@ -232,10 +233,8 @@ class TokenReceiver:
                 # Captcha is needed
                 if error == "need_captcha":
                     self.__log("Captcha is needed!")
-                    captcha_sid: str = problem_response["captcha_sid"]
-                    captcha_img: str = problem_response["captcha_img"]
-                    captcha_key: str = on_captcha(captcha_img)
-                    captcha = (captcha_sid, captcha_key)
+                    captcha_url: str = problem_response["redirect_uri"]
+                    captcha: str = on_captcha(captcha_url)
                 # 2FA is needed
                 elif error == "need_validation":
                     self.__log("2fa is needed!")
@@ -244,6 +243,9 @@ class TokenReceiver:
                     # 2FA app is needed
                     if validation_type == "2fa_app":
                         self.__log("Code from 2FA app is needed!")
+                    # Call 4 digits needed
+                    elif validation_type == "2fa_callreset":
+                        self.__log("Use last 4 digits from incoming call!")
                     # Other type of 2FA
                     else:
                         self.__log(f"{validation_type} {validation_description}")
@@ -293,10 +295,10 @@ class TokenReceiver:
         If necessary, interactively accepts a code from SMS or captcha.
 
         Args:
-            on_captcha (Callable[[str], str]): ASYNC handler to captcha. Get url image. Return key.
-            on_2fa (Callable[[], str]): ASYNC handler to 2-factor auth. Return captcha.
-            on_invalid_client (Callable[[], None]): ASYNC handler to invalid client.
-            on_critical_error (Callable[[Any], None]): ASYNC handler to crit error. Get response.
+            on_captcha (Callable[[str], Awaitable[str]]): ASYNC handler to captcha. Get url image. Return captcha result.
+            on_2fa (Callable[[], Awaitable[str]]): ASYNC handler to 2-factor auth. Return code.
+            on_invalid_client (Callable[[], Awaitable[None]]): ASYNC handler to invalid client.
+            on_critical_error (Callable[..., Awaitable[None]]): ASYNC handler to crit error. Get response.
 
         Returns:
             bool: Boolean value indicating whether authorization was successful or not.
@@ -338,10 +340,8 @@ class TokenReceiver:
                 # Captcha is needed
                 if error == "need_captcha":
                     self.__log("Captcha is needed!")
-                    captcha_sid: str = problem_response["captcha_sid"]
-                    captcha_img: str = problem_response["captcha_img"]
-                    captcha_key: str = await on_captcha(captcha_img)
-                    captcha = (captcha_sid, captcha_key)
+                    captcha_url: str = problem_response["redirect_uri"]
+                    captcha: str = await on_captcha(captcha_url)
                 # 2FA is needed
                 elif error == "need_validation":
                     self.__log("2fa is needed!")
@@ -390,6 +390,9 @@ class TokenReceiver:
     def get_token(self) -> Optional[str]:
         """
         Returns the token if exists.
+
+        Returns:
+            str | None: Token string, or None if auth was not called yet.
         """
         token = self.__token
         if not token:

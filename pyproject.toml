@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "vkpymusic"
-version = "4.0.0"
+version = "4.0.2"
 homepage = "https://github.com/issamansur/vkpymusic"
 repository = "https://github.com/issamansur/vkpymusic"
 description = "Python library for VK Audio (API)"
@@ -21,6 +21,7 @@ selenium = "^4.44.0"
 webdriver-manager = "^4.1.1"
 curl-cffi = "^0.15.0"
 av = "^17.0.1"
+cryptography = "^42.0.0"
 unidecode = "1.*"
 
 [build-system]

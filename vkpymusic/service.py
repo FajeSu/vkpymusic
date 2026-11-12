@@ -1019,7 +1019,7 @@ class Service:
         if not url:
             cls.__log(level="warning", msg="Url not found")
             return None
-        elif "index.m3u8" in url:
+        elif "index.m3u8" in url or "track.m3u8" in url:
             file_path, skip = cls.__prepare_music_path(file_name_mp3, overwrite, music_dir)
             if skip:
                 return file_path
@@ -1084,7 +1084,7 @@ class Service:
         if not url:
             cls.__log(level="warning", msg="Url not found")
             return None
-        elif "index.m3u8" in url:
+        elif "index.m3u8" in url or "track.m3u8" in url:
             file_path, skip = cls.__prepare_music_path(file_name_mp3, overwrite, music_dir)
             if skip:
                 return file_path
